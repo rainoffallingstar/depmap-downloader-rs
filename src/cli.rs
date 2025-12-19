@@ -57,12 +57,15 @@ pub enum Commands {
         #[arg(long, help = "Verify checksum after download")]
         verify_checksum: bool,
     },
-    /// Search for cell lines or datasets
+    /// Search for cell lines, genes, or datasets
     Search {
         query: String,
         
         #[arg(short, long, help = "Search in cell lines")]
         cell_line: bool,
+        
+        #[arg(short, long, help = "Search in genes")]
+        gene: bool,
         
         #[arg(short, long, help = "Search in datasets")]
         dataset: bool,

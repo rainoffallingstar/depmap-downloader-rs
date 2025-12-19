@@ -117,18 +117,32 @@ cargo build
 #### 4. Search Data
 
 ```bash
+# Search genes (NEW!)
+./target/release/depmap-downloader search "TP53" --gene
+
+# Search by Entrez ID
+./target/release/depmap-downloader search "7159" --gene
+
 # Search cell lines
 ./target/release/depmap-downloader search "A549" --cell-line
 
 # Search datasets
 ./target/release/depmap-downloader search "CRISPR" --dataset
 
-# Search all content (default)
-./target/release/depmap-downloader search "gene"
+# Search all content (default: genes, cell lines, and datasets)
+./target/release/depmap-downloader search "BRCA1"
 
 # Limit search results
 ./target/release/depmap-downloader search "cancer" --limit 20
 ```
+
+#### Gene Search Results
+Gene search displays:
+- Gene name and Entrez ID
+- Dataset source
+- Number of dependent cell lines
+- Cell lines with data available
+- Essentiality status (Common Essential, Strongly Selective, or Non-essential)
 
 #### 5. Cache Statistics
 
@@ -177,6 +191,21 @@ cargo build
 ./target/release/depmap-downloader download --verify-checksum release "DepMap Public 23Q4"
 ```
 
+#### Search Genes
+```bash
+# Search for tumor suppressor gene TP53
+./target/release/depmap-downloader search TP53 -g
+
+# Search by Entrez ID
+./target/release/depmap-downloader search 7159 -g --limit 5
+
+# Find common essential genes (search pattern)
+./target/release/depmap-downloader search "RPA" -g
+
+# Search for oncogenes
+./target/release/depmap-downloader search MYC -g
+```
+
 ## Project Structure
 
 ```
@@ -203,7 +232,7 @@ Responsible for data caching and database management:
 
 - **Database Migrations**: Automatically creates and updates SQLite database schema
 - **API Data Fetching**: Fetches and caches data from DepMap API
-- **Query Interface**: Provides data query and search functionality
+- **Query Interface**: Provides data query and search functionality for releases, datasets, cell lines, and genes
 - **Cache Management**: Intelligent caching strategies to avoid duplicate downloads
 
 ### Downloader

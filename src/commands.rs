@@ -26,8 +26,8 @@ pub async fn handle_command(
         Commands::Download { command, dataset, file, output, workers, skip_existing, verify_checksum } => {
             handle_download(&cache, command, dataset, file, output, workers, skip_existing, verify_checksum).await?;
         }
-        Commands::Search { query, cell_line, dataset, limit } => {
-            handle_search(&cache, &query, cell_line, dataset, limit).await?;
+        Commands::Search { query, cell_line, gene, dataset, limit } => {
+            handle_search(&cache, &query, cell_line, gene, dataset, limit).await?;
         }
         Commands::Stats { detailed } => {
             handle_stats(&cache, detailed).await?;
@@ -449,6 +449,7 @@ async fn handle_search(
     cache: &CacheManager,
     query: &str,
     cell_line: bool,
+    gene: bool,
     dataset: bool,
     limit: Option<usize>,
 ) -> Result<()> {
@@ -456,7 +457,39 @@ async fn handle_search(
     
     let limit = limit.unwrap_or(50);
     
-    if cell_line || (!cell_line && !dataset) {
+    if gene || (!cell_line && !gene && !dataset) {
+        println!("🧬 Searching in genes...");
+        match cache.search_genes(query, limit).await {
+            Ok(genes) => {
+                if genes.is_empty() {
+                    println!("  No genes found");
+                } else {
+                    println!("  Found {} matching genes:", genes.len());
+                    for gene in genes {
+                        let essential = if gene.common_essential {
+                            "Common Essential".bright_red()
+                        } else if gene.strongly_selective {
+                            "Strongly Selective".bright_yellow()
+                        } else {
+                            "Non-essential".bright_green()
+                        };
+                        
+                        println!("    🧬 {} (Entrez ID: {})", gene.gene.bright_white(), gene.entrez_id.to_string().dimmed());
+                        println!("      📊 Dataset: {}", gene.dataset.italic());
+                        println!("      📈 Dependent Cell Lines: {}", gene.dependent_cell_lines);
+                        println!("      🧪 Cell Lines with Data: {}", gene.cell_lines_with_data);
+                        println!("      ⭐ Status: {}", essential);
+                        println!();
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("Failed to search genes: {}", e);
+            }
+        }
+    }
+    
+    if cell_line || (!cell_line && !gene && !dataset) {
         println!("🧬 Searching in cell lines...");
         match cache.search_cell_lines(query).await {
             Ok(cell_lines) => {
@@ -483,7 +516,7 @@ async fn handle_search(
         println!();
     }
     
-    if dataset || (!cell_line && !dataset) {
+    if dataset || (!cell_line && !gene && !dataset) {
         println!("📊 Searching in datasets...");
         match cache.search_datasets(query).await {
             Ok(datasets) => {

@@ -442,6 +442,48 @@ impl CacheManager {
         Ok(Vec::new())
     }
     
+    pub async fn search_genes(&self, query: &str, limit: usize) -> Result<Vec<GeneDependency>> {
+        let pattern = format!("%{}%", query);
+        
+        let rows = sqlx::query(
+            "SELECT * FROM gene_dependencies 
+             WHERE gene LIKE ? OR entrez_id = ?
+             ORDER BY 
+                 CASE 
+                     WHEN gene LIKE ? THEN 1
+                     WHEN gene LIKE ? THEN 2
+                     ELSE 3
+                 END,
+                 dependent_cell_lines DESC
+             LIMIT ?"
+        )
+        .bind(&pattern)
+        .bind(query) // Try to match exact Entrez ID if query is numeric
+        .bind(format!("{}%", query)) // Starts with query
+        .bind(format!("%{}", query)) // Ends with query
+        .bind(limit as i64)
+        .fetch_all(&self.db_pool)
+        .await?;
+        
+        let mut genes = Vec::new();
+        for row in rows {
+            genes.push(GeneDependency {
+                id: Some(row.get("id")),
+                entrez_id: row.get("entrez_id"),
+                gene: row.get("gene"),
+                dataset: row.get("dataset"),
+                dependent_cell_lines: row.get("dependent_cell_lines"),
+                cell_lines_with_data: row.get("cell_lines_with_data"),
+                strongly_selective: row.get("strongly_selective"),
+                common_essential: row.get("common_essential"),
+                created_at: row.get::<Option<String>, _>("created_at")
+                    .and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.into())),
+            });
+        }
+        
+        Ok(genes)
+    }
+    
     pub async fn get_gene_dependencies(&self, _gene: &str) -> Result<Vec<GeneDependency>> {
         Ok(Vec::new())
     }

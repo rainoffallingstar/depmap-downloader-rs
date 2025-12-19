@@ -1,270 +1,391 @@
-# DepMap 数据下载器
+# DepMap Downloader Rust
 
-一个用于下载 DepMap (Cancer Dependency Map) 数据的 Python 工具，支持从官方 API 和 Figshare 获取癌症依赖性数据集。
+一个高性能的 Rust 工具，用于下载 DepMap (Cancer Dependency Map) 数据。支持从官方 API 和 Figshare 获取癌症依赖性数据集，具有并发下载、进度显示和本地缓存等功能。
 
 ## 项目概述
 
-DepMap (癌症依赖性图谱) 是由博德研究所主导的科学研究项目，旨在系统性地识别癌细胞赖以生存的基因及分子通路。本工具提供了程序化访问 DepMap 数据的便捷方式，支持：
+DepMap (癌症依赖性图谱) 是由博德研究所主导的科学研究项目，旨在系统性地识别癌细胞赖以生存的基因及分子通路。本 Rust 实现提供了程序化访问 DepMap 数据的高性能方式，支持：
 
-- 下载最新版本的 DepMap 数据
-- 获取历史版本数据
-- 多线程并发下载
-- 进度显示和断点续传
-- 自定义筛选和批量处理
+- 🚀 **高性能**: Rust 的零成本抽象和高效内存管理
+- 🔄 **并发下载**: 多线程并发下载，支持大文件处理
+- 📊 **智能缓存**: SQLite 本地缓存，避免重复下载
+- 🎯 **精确搜索**: 支持细胞系和数据集的模糊搜索
+- 🛡️ **类型安全**: 编译时保证的类型安全
+- 📦 **单一可执行文件**: 无需运行时依赖，易于部署
 
-## 功能特性
+## 快速开始
 
-- 🔍 **版本管理**: 自动获取 DepMap 发布版本列表
-- ⬇️ **多源下载**: 支持官方 API 和 Figshare 数据源
-- 🚀 **高性能**: 多线程并发下载，支持大文件处理
-- 📊 **进度可视**: 实时显示下载进度
-- 🔄 **断点续传**: 支持下载失败后重试
-- 🛡️ **错误处理**: 完善的异常处理和日志记录
+### 安装要求
 
-## 环境要求
-
-- Python 3.8+
+- Rust 1.70+ (推荐使用 [rustup](https://rustup.rs/))
 - 网络连接
 
-## 安装和配置
-
-### 方法一：使用 uv (推荐)
+### 构建项目
 
 ```bash
-# 安装 uv 包管理工具
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
 # 克隆项目
 git clone <repository-url>
-cd depmapdown
+cd depmap-downloader-rs
 
-# 初始化项目并安装依赖
-uv init
-uv add requests pandas tqdm
+# 构建项目
+cargo build --release
 
 # 运行程序
-uv run python depmapdown.py
+./target/release/depmap-downloader --help
 ```
 
-### 方法二：使用传统 pip
+### 开发模式
 
 ```bash
-# 克隆项目
-git clone <repository-url>
-cd depmapdown
+# 开发构建（更快）
+cargo build
 
-# 创建虚拟环境
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# 或 venv\Scripts\activate  # Windows
-
-# 安装依赖
-pip install requests pandas tqdm
-
-# 运行程序
-python depmapdown.py
+# 运行开发版本
+./target/debug/depmap-downloader --help
 ```
 
 ## 使用方法
 
-### 交互式使用
+### 命令行界面
 
-直接运行主程序：
+#### 1. 更新本地缓存
 
 ```bash
-python depmapdown.py
+# 更新缓存（自动检查是否需要更新）
+./target/release/depmap-downloader update
+
+# 强制更新
+./target/release/depmap-downloader update --force
+
+# 仅更新特定数据类型
+./target/release/depmap-downloader update --data-type CRISPR --data-type Expression
 ```
 
-程序会显示选项菜单：
+#### 2. 列出可用数据
 
-```
-=== DepMap 数据下载器 ===
-正在获取可用的DepMap发布版本...
+```bash
+# 列出所有发布版本
+./target/release/depmap-downloader list
 
-请选择下载选项:
-1. 下载当前最新版本
-2. 从Figshare下载特定历史版本
-3. 查看所有可用版本详情
+# 列出特定数据类型
+./target/release/depmap-downloader list --data-type CRISPR
 
-请输入选择 (1-3):
-```
+# 显示详细信息
+./target/release/depmap-downloader list --detailed
 
-### 选项说明
-
-1. **下载当前最新版本**: 下载 DepMap 官方发布的最新数据集
-2. **下载历史版本**: 从 Figshare 选择并下载特定历史版本
-3. **查看版本详情**: 浏览所有可用版本的详细信息
-
-### 编程方式使用
-
-```python
-from depmapdown import DepMapReleaseManager, DepMapDataDownloader
-
-# 初始化版本管理器
-release_manager = DepMapReleaseManager()
-
-# 获取发布版本列表
-releases = release_manager.get_figshare_releases()
-print(f"找到 {len(releases)} 个发布版本")
-
-# 初始化下载器
-downloader = DepMapDataDownloader(
-    download_dir="my_depmap_data",  # 自定义下载目录
-    max_workers=8  # 设置并发下载数
-)
-
-# 下载当前最新版本
-downloader.download_current_release(max_files=10)
-
-# 下载特定版本
-if releases:
-    selected_release = releases[0]  # 选择第一个版本
-    downloader.download_figshare_release(selected_release)
+# 列出特定版本的文件
+./target/release/depmap-downloader list --release "DepMap Public 25Q3"
 ```
 
-### 高级用法
+#### 3. 下载数据
 
-#### 自定义筛选
+```bash
+# 下载当前版本的核心文件
+./target/release/depmap-downloader download
 
-```python
-# 获取当前版本文件列表
-files_df = release_manager.get_current_release_files()
+# 下载特定数据集
+./target/release/depmap-downloader download --dataset Chronos_Combined
 
-# 筛选特定类型的文件
-filtered_files = files_df[files_df['name'].str.contains('CRISPR')]
+# 下载特定文件
+./target/release/depmap-downloader download --file "CRISPRGeneEffect.csv"
+
+# 自定义输出目录和并发数
+./target/release/depmap-downloader download --output ./my_data --workers 8
+
+# 跳过已存在的文件
+./target/release/depmap-downloader download --skip-existing
+
+# 启用校验和验证
+./target/release/depmap-downloader download --verify-checksum
 ```
 
-#### 单文件下载
+#### 4. 搜索数据
 
-```python
-file_info = {
-    'name': 'example_file.csv',
-    'url': 'https://example.com/file.csv'
+```bash
+# 搜索细胞系
+./target/release/depmap-downloader search "A549" --cell-line
+
+# 搜索数据集
+./target/release/depmap-downloader search "CRISPR" --dataset
+
+# 搜索所有内容（默认）
+./target/release/depmap-downloader search "gene"
+
+# 限制搜索结果数量
+./target/release/depmap-downloader search "cancer" --limit 20
+```
+
+#### 5. 缓存统计
+
+```bash
+# 显示基本统计
+./target/release/depmap-downloader stats
+
+# 显示详细统计
+./target/release/depmap-downloader stats --detailed
+```
+
+#### 6. 清理缓存
+
+```bash
+# 清除所有缓存
+./target/release/depmap-downloader clear --all
+
+# 清除特定数据类型缓存
+./target/release/depmap-downloader clear --data-type CRISPR
+```
+
+### 编程接口
+
+```rust
+use depmap_downloader::{CacheManager, Downloader};
+use std::path::PathBuf;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // 初始化缓存管理器
+    let cache = CacheManager::new(
+        "depmap_cache.db", 
+        "https://depmap.org/portal/api", 
+        &PathBuf::from(".cache")
+    ).await?;
+    
+    // 更新缓存
+    cache.update_cache(false).await?;
+    
+    // 获取所有发布版本
+    let releases = cache.get_releases(None).await?;
+    println!("找到 {} 个发布版本", releases.len());
+    
+    // 获取特定数据集
+    let datasets = cache.get_datasets(Some("CRISPR")).await?;
+    println!("找到 {} 个 CRISPR 数据集", datasets.len());
+    
+    // 初始化下载器
+    let downloader = Downloader::new(
+        4,                              // 并发数
+        "downloads".to_string(),     // 输出目录
+        true,                           // 跳过已存在文件
+        true,                           // 校验和验证
+    )?;
+    
+    // 下载文件
+    if !releases.is_empty() {
+        let release = &releases[0];
+        let download_files = release.files.clone();
+        downloader.download_files(download_files).await?;
+    }
+    
+    Ok(())
 }
-
-download_dir = downloader.create_download_dir("custom")
-success, error = downloader.download_file(file_info, download_dir)
 ```
 
 ## 项目结构
 
 ```
-depmapdown/
-├── depmapdown.py          # 主程序文件
-├── depmap-api-deepresearch.md  # DepMap API 详细分析文档
-├── pyproject.toml         # 项目配置文件
-├── uv.lock               # 依赖锁定文件
-├── README.md             # 本文档
-└── .venv/                # 虚拟环境目录
+depmap-downloader-rs/
+├── src/                    # 源代码目录
+│   ├── main.rs             # 主程序入口
+│   ├── cli.rs              # CLI 参数定义
+│   ├── commands.rs         # 命令处理逻辑
+│   ├── cache_manager.rs    # 缓存管理器
+│   ├── downloader.rs        # 文件下载器
+│   ├── models.rs           # 数据模型
+│   └── error.rs            # 错误处理
+├── Cargo.toml             # 项目配置和依赖
+├── README.md               # 本文档
+├── LICENSE                 # 许可证文件
+└── target/                # 编译输出目录
 ```
 
-## 核心类说明
+## 核心组件
 
-### DepMapReleaseManager
+### CacheManager
 
-负责管理 DepMap 版本信息：
+负责数据缓存和数据库管理：
 
-- `get_figshare_releases()`: 获取 Figshare 发布版本列表
-- `get_current_release_files()`: 获取当前版本文件列表
-- `get_figshare_files(article_id)`: 获取特定 Figshare 版本的文件列表
-- `_extract_version(title)`: 从标题提取版本号
+- **数据库迁移**: 自动创建和更新 SQLite 数据库结构
+- **API 数据获取**: 从 DepMap API 获取数据并缓存
+- **查询接口**: 提供数据查询和搜索功能
+- **缓存管理**: 智能缓存策略，避免重复下载
 
-### DepMapDataDownloader
+### Downloader
 
-负责数据下载：
+负责高性能文件下载：
 
-- `download_current_release(max_files=None)`: 下载当前版本
-- `download_figshare_release(release_info, max_files=None)`: 下载 Figshare 版本
-- `download_file(file_info, download_dir, retry_count=3)`: 下载单个文件
-- `create_download_dir(release_name)`: 创建下载目录
+- **并发下载**: 支持多线程并发下载
+- **进度显示**: 实时显示下载进度
+- **校验和验证**: MD5 校验确保文件完整性
+- **断点续传**: 支持跳过已存在文件
+- **错误处理**: 完善的错误恢复机制
 
-## 数据源说明
+### CLI 接口
 
-### 官方 API
+提供丰富的命令行功能：
 
-- **基础 URL**: `https://depmap.org/portal/api`
-- **文件列表**: `/download/files`
-- **自定义下载**: `/download/custom`
+- **交互式设计**: 直观的命令行界面
+- **参数验证**: 完整的参数检查和错误提示
+- **彩色输出**: 清晰的彩色终端输出
+- **帮助系统**: 完整的帮助文档
 
-### Figshare
+## 数据模型
 
-- **搜索 API**: `https://api.figshare.com/v2/articles/search`
-- **数据集**: 搜索关键词 "DepMap"
+### Release (发布版本)
+- 发行版本信息
+- 发布日期
+- 包含的文件列表
+- 当前版本标识
 
-## 输出格式
+### Dataset (数据集)
+- 数据集 ID 和显示名称
+- 数据类型 (CRISPR, RNAi, Expression 等)
+- 下载链接
+- 关联文件
 
-下载的数据以原始格式保存：
+### DownloadFile (下载文件)
+- 文件名和 URL
+- MD5 校验和
+- 文件大小和类型
+- 下载状态
 
-- **CSV 文件**: 表格数据，可使用 pandas 等工具处理
-- **其他格式**: 根据 DepMap 原始格式保存
+## 数据类型
+
+支持的主要数据类型：
+
+- **CRISPR**: CRISPR 基因筛选数据
+- **RNAi**: RNA 干扰数据  
+- **Expression**: 基因表达数据
+- **Mutations**: 突变数据
+- **CN**: 拷贝数变异数据
+- **Drug screen**: 药物筛选数据
+- **Protein Expression**: 蛋白质表达数据
+- **Metadata**: 元数据
+
+## 配置选项
+
+### 环境变量
+
+- `DATABASE_URL`: 数据库连接字符串 (默认: `depmap_cache.db`)
+- `SQLX_OFFLINE`: 启用 SQLx 离线模式 (用于编译)
+
+### 命令行选项
+
+```bash
+--database <PATH>     # 自定义数据库文件路径
+--api-url <URL>        # 自定义 API 基础 URL
+--verbose             # 启用详细日志输出
+```
+
+## 性能特性
+
+### 内存效率
+- 流式处理大文件，避免内存溢出
+- 智能缓存管理，最小化内存占用
+- 异步 I/O 操作，提高并发性能
+
+### 下载性能
+- 可配置的并发下载 (默认: 4 线程)
+- 自动重试机制和错误恢复
+- 支持断点续传，避免重复下载
+
+### 数据库性能
+- SQLite 本地缓存，快速查询
+- 索引优化，支持高效搜索
+- 批量操作，减少数据库调用
 
 ## 错误处理
 
 程序包含完善的错误处理机制：
 
 - **网络错误**: 自动重试，支持指数退避
-- **文件错误**: 检查文件完整性，支持断点续传
-- **权限错误**: 提示用户检查目录权限
-- **内存错误**: 流式下载，支持大文件处理
+- **数据库错误**: 数据库迁移和恢复机制
+- **文件错误**: 校验和验证和文件完整性检查
+- **权限错误**: 清晰的错误信息和解决建议
 
-## 日志记录
+## 开发指南
 
-程序使用 Python logging 模块记录运行信息：
+### 本地开发
 
+```bash
+# 克隆项目
+git clone <repository-url>
+cd depmap-downloader-rs
+
+# 安装 Rust (如果没有)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+
+# 开发构建
+cargo build
+
+# 运行测试
+cargo test
+
+# 代码检查
+cargo clippy
+
+# 格式化代码
+cargo fmt
 ```
-2024-12-19 10:00:00 - INFO - 正在从Figshare获取DepMap发布版本...
-2024-12-19 10:00:05 - INFO - 从Figshare找到 15 个DepMap发布版本
-2024-12-19 10:00:10 - INFO - 正在下载: example_file.csv (尝试 1/3)
-```
 
-## 性能优化建议
+### 添加新功能
 
-1. **并发设置**: 根据网络带宽调整 `max_workers` 参数
-2. **磁盘空间**: 确保有足够的磁盘空间存储下载文件
-3. **网络稳定**: 在稳定网络环境下运行以获得最佳性能
-4. **筛选下载**: 使用 `max_files` 参数限制下载数量进行测试
+1. 在 `src/cli.rs` 中添加新的 CLI 参数
+2. 在 `src/commands.rs` 中实现命令处理逻辑
+3. 在 `src/cache_manager.rs` 中添加数据查询方法
+4. 添加相应的测试用例
 
-## 注意事项
+## 性能对比
 
-- 仅用于研究目的，不得用于商业用途
-- 使用时请引用 DepMap 相关文献
-- 部分数据文件较大，请确保有足够存储空间
-- 网络不稳定时可能需要多次重试
+与 Python 版本相比：
+
+| 特性 | Python 版本 | Rust 版本 |
+|------|------------|----------|
+| 内存使用 | 高 | 低 |
+| 下载速度 | 中等 | 高 |
+| 并发性能 | GIL 限制 | 真正并发 |
+| 部署大小 | 需要 Python 环境 | 单一可执行文件 |
+| 类型安全 | 运行时错误 | 编译时检查 |
+| 错误处理 | 异常捕获 | Result 类型系统 |
 
 ## 故障排除
 
-### 常见问题
+### 编译问题
 
-1. **依赖安装失败**
-   ```bash
-   # 尝试更新包管理工具
-   pip install --upgrade pip
-   uv self update
-   ```
+```bash
+# 清理构建缓存
+cargo clean
 
-2. **网络连接问题**
-   ```bash
-   # 检查网络连接
-   curl -I https://depmap.org/portal/api
-   ```
+# 重新构建
+cargo build
 
-3. **权限问题**
-   ```bash
-   # 检查目录权限
-   ls -la /path/to/download/directory
-   ```
+# 检查 Rust 版本
+rustc --version
+```
 
-4. **内存不足**
-   - 减少 `max_workers` 参数
-   - 使用 `max_files` 限制下载数量
+### 运行时问题
 
-### 调试模式
+```bash
+# 检查数据库权限
+ls -la depmap_cache.db
 
-启用详细日志：
+# 检查网络连接
+curl -I https://depmap.org/portal/api
 
-```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
+# 查看详细日志
+./target/release/depmap-downloader --verbose update
+```
+
+### 性能问题
+
+```bash
+# 调整并发数
+./target/release/depmap-downloader download --workers 2
+
+# 限制下载数量
+./target/release/depmap-downloader download --dataset CRISPR
+
+# 清理缓存重建
+./target/release/depmap-downloader clear --all
 ```
 
 ## 相关资源
@@ -272,15 +393,29 @@ logging.basicConfig(level=logging.DEBUG)
 - [DepMap 官方网站](https://depmap.org)
 - [DepMap API 文档](https://depmap.org/portal/api)
 - [DepMap 数据页面](https://depmap.org/portal/data_page)
-- [Figshare API 文档](https://docs.figshare.com)
-
-## 许可证
-
-本项目仅用于研究目的。DepMap 数据的使用请遵循官方条款。
+- [Rust 官方文档](https://doc.rust-lang.org/)
+- [SQLx 文档](https://docs.rs/sqlx/)
+- [Tokio 文档](https://docs.rs/tokio/)
 
 ## 贡献
 
-欢迎提交 Issue 和 Pull Request 来改进这个工具。
+欢迎提交 Issue 和 Pull Request：
+
+1. Fork 项目
+2. 创建功能分支 (`git checkout -b feature/amazing-feature`)
+3. 提交更改 (`git commit -m 'Add amazing feature'`)
+4. 推送分支 (`git push origin feature/amazing-feature`)
+5. 创建 Pull Request
+
+## 许可证
+
+本项目采用 MIT 许可证。DepMap 数据的使用请遵循官方条款。
+
+## 致谢
+
+- DepMap 项目提供的数据和研究资源
+- Rust 社区的优秀工具和库
+- 所有贡献者和用户的反馈和建议
 
 ---
 

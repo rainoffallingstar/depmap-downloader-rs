@@ -1,7 +1,7 @@
 use crate::error::{DepMapError, Result};
 use crate::models::*;
 use chrono::{DateTime, Utc, Duration};
-use sqlx::{SqlitePool, Row};
+use sqlx::SqlitePool;
 use std::path::PathBuf;
 use tracing::{info, warn, error, debug};
 use tokio::fs;
@@ -156,19 +156,17 @@ impl CacheManager {
         }
         
         // Parallel fetch of all API endpoints
-        let (files_result, datasets_result, gene_dep_result) = tokio::try_join!(
+        match tokio::try_join!(
             self.fetch_and_cache_files(),
             self.fetch_and_cache_datasets(),
             self.fetch_and_cache_gene_dependencies()
-        );
-        
-        match (files_result, datasets_result, gene_dep_result) {
-            (Ok(()), Ok(()), Ok(())) => {
+        ) {
+            Ok((_, _, _)) => {
                 self.update_timestamps().await?;
                 info!("Cache updated successfully!");
             }
-            _ => {
-                warn!("Some cache updates failed, but continuing...");
+            Err(e) => {
+                warn!("Some cache updates failed: {}, but continuing...", e);
                 self.update_timestamps().await?;
             }
         }
@@ -218,11 +216,12 @@ impl CacheManager {
         }
         
         // Store in database
+        let release_count = releases.len();
         for (_, release) in releases {
             self.store_release(&release).await?;
         }
         
-        info!("Cached {} releases with their files", releases.len());
+        info!("Cached {} releases with their files", release_count);
         Ok(())
     }
     
@@ -234,6 +233,7 @@ impl CacheManager {
         
         debug!("Processing {} datasets...", datasets.len());
         
+        let dataset_count = datasets.len();
         for api_dataset in datasets {
             let dataset = Dataset {
                 id: api_dataset.id.clone(),
@@ -247,7 +247,7 @@ impl CacheManager {
             self.store_dataset(&dataset).await?;
         }
         
-        info!("Cached {} datasets", datasets.len());
+        info!("Cached {} datasets", dataset_count);
         Ok(())
     }
     
@@ -259,7 +259,8 @@ impl CacheManager {
         let response = self.client.get(&url).send().await?;
         
         // Process CSV line by line to avoid memory issues
-        let mut rdr = csv::Reader::from_reader(response.bytes_stream());
+        let bytes = response.bytes().await?;
+        let mut rdr = csv::Reader::from_reader(bytes.as_ref());
         let mut processed_count = 0;
         
         for result in rdr.deserialize() {
@@ -457,8 +458,8 @@ impl CacheManager {
         .await?;
         
         if let Some(row) = result {
-            if let Some(updated_str) = row.updated_at {
-                let updated: DateTime<Utc> = DateTime::parse_from_rfc3339(&updated_str)?.into();
+            if let Some(updated_str) = &row.updated_at {
+                let updated: DateTime<Utc> = DateTime::parse_from_rfc3339(updated_str)?.into();
                 let expired = Utc::now() - updated > Duration::hours(24);
                 Ok(expired)
             } else {
@@ -540,8 +541,8 @@ impl CacheManager {
         )
         .fetch_optional(&self.db_pool)
         .await?
-        .and_then(|row| row.updated_at)
-        .and_then(|dt| DateTime::parse_from_rfc3339(&dt).ok())
+        .and_then(|row| row.updated_at.as_deref())
+        .and_then(|dt| DateTime::parse_from_rfc3339(dt).ok())
         .map(|dt| dt.into());
         
         Ok(CacheStats {

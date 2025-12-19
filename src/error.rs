@@ -31,6 +31,15 @@ pub enum DepMapError {
     
     #[error("Download failed: {0}")]
     DownloadError(String),
+    
+    #[error("Chrono parse error: {0}")]
+    ChronoError(#[from] chrono::ParseError),
+    
+    #[error("Semaphore acquire error: {0}")]
+    SemaphoreError(#[from] tokio::sync::AcquireError),
+    
+    #[error("Task join error: {0}")]
+    TaskJoinError(#[from] tokio::task::JoinError),
 }
 
 pub type Result<T> = std::result::Result<T, DepMapError>;

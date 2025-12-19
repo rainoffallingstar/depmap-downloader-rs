@@ -176,7 +176,7 @@ impl Downloader {
         let mut downloaded_bytes = 0u64;
         let mut hasher = Sha1::new();
         
-        let mut file = File::create(&file_path).await?;
+        let mut file_handle = File::create(&file_path).await?;
         let bytes = response.bytes().await?;
         
         // Update hash
@@ -185,7 +185,7 @@ impl Downloader {
         }
         
         // Write to file
-        file.write_all(&bytes).await?;
+        file_handle.write_all(&bytes).await?;
         
         downloaded_bytes = bytes.len() as u64;
         
@@ -194,7 +194,7 @@ impl Downloader {
             progress.set_position(downloaded_bytes);
         }
         
-        file.flush().await?;
+        file_handle.flush().await?;
         
         if let Some(ref progress) = file_progress {
             progress.finish();

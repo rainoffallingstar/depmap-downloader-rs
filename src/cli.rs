@@ -30,17 +30,15 @@ pub enum Commands {
     },
     /// List available releases, datasets, or files
     List {
-        #[arg(short, long, help = "List files for specific release")]
-        release: Option<String>,
-        
-        #[arg(short, long, help = "List datasets of specific type")]
-        data_type: Option<String>,
-        
-        #[arg(long, help = "Show detailed information")]
-        detailed: bool,
+        #[command(subcommand)]
+        command: Option<ListCommands>,
     },
     /// Download specific datasets or files
     Download {
+        #[command(subcommand)]
+        command: Option<DownloadCommands>,
+        
+        // 向后兼容支持
         #[arg(short, long, help = "Download specific dataset by ID")]
         dataset: Option<String>,
         
@@ -84,5 +82,47 @@ pub enum Commands {
         
         #[arg(short, long, help = "Clear specific data type")]
         data_type: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum ListCommands {
+    /// List all available releases
+    Releases {
+        #[arg(long, help = "Show detailed information")]
+        detailed: bool,
+    },
+    /// List available datasets
+    Datasets {
+        #[arg(long, short = 't', help = "Filter by dataset type")]
+        data_type: Option<String>,
+        
+        #[arg(long, help = "Show detailed information")]
+        detailed: bool,
+    },
+    /// List files in a specific release
+    Files {
+        #[arg(help = "Release name")]
+        release: String,
+        
+        #[arg(long, help = "Show detailed information")]
+        detailed: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum DownloadCommands {
+    /// Download all files from a specific release
+    Release {
+        #[arg(help = "Release name (e.g., 23Q4, 24Q1)")]
+        name: String,
+        
+        #[arg(long, help = "Filter by data type")]
+        data_type: Option<String>,
+    },
+    /// Download all files for a specific dataset
+    Dataset {
+        #[arg(help = "Dataset ID")]
+        id: String,
     },
 }

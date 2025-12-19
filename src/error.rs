@@ -17,6 +17,9 @@ pub enum DepMapError {
     #[error("File not found: {0}")]
     FileNotFound(String),
     
+    #[error("Resource not found: {0}")]
+    NotFound(String),
+    
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
     

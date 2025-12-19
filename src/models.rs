@@ -93,7 +93,9 @@ pub struct DownloadCsvRow {
 pub struct GeneDependencyCsvRow {
     #[serde(rename = "Entrez Id")]
     pub entrez_id: u32,
+    #[serde(rename = "Gene")]
     pub gene: String,
+    #[serde(rename = "Dataset")]
     pub dataset: String,
     #[serde(rename = "Dependent Cell Lines")]
     pub dependent_cell_lines: f64,

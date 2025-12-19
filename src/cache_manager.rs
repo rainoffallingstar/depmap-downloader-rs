@@ -21,7 +21,21 @@ impl CacheManager {
         fs::create_dir_all(cache_dir).await?;
         
         // Initialize database connection pool
-        let db_pool = SqlitePool::connect(database_url).await?;
+        let db_url = format!("sqlite:{}", database_url);
+        let db_pool = SqlitePool::connect(&db_url).await?;
+        
+        // Configure database for better concurrent performance
+        sqlx::query("PRAGMA busy_timeout = 30000")  // 30 second timeout
+            .execute(&db_pool)
+            .await?;
+        
+        sqlx::query("PRAGMA synchronous = NORMAL")   // Balance between safety and speed
+            .execute(&db_pool)
+            .await?;
+        
+        sqlx::query("PRAGMA journal_mode = WAL")     // Enable Write-Ahead Logging for better concurrency
+            .execute(&db_pool)
+            .await?;
         
         // Run migrations
         Self::run_migrations(&db_pool).await?;
@@ -89,6 +103,21 @@ impl CacheManager {
                 download_entry_url TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 last_updated DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            "#
+        )
+        .execute(db_pool)
+        .await?;
+        
+        // Create dataset_files join table
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS dataset_files (
+                dataset_id TEXT,
+                file_id INTEGER,
+                PRIMARY KEY (dataset_id, file_id),
+                FOREIGN KEY (dataset_id) REFERENCES datasets (id),
+                FOREIGN KEY (file_id) REFERENCES files (id)
             )
             "#
         )
@@ -171,6 +200,35 @@ impl CacheManager {
             }
         }
         
+        Ok(())
+    }
+    
+    /// Update cache selectively by data types
+    pub async fn update_cache_selective(&self, force: bool, data_type_filters: Vec<String>) -> Result<()> {
+        info!("Updating DepMap cache for specific data types: {:?}", data_type_filters);
+        
+        if !force && !self.is_cache_expired().await? {
+            info!("Cache is up to date. Use --force to update anyway.");
+            return Ok(());
+        }
+        
+        // Fetch all data to get the latest information
+        match tokio::try_join!(
+            self.fetch_and_cache_files(),
+            self.fetch_and_cache_datasets(),
+            self.fetch_and_cache_gene_dependencies()
+        ) {
+            Ok((_, _, _)) => {
+                self.update_timestamps().await?;
+                info!("Cache updated successfully!");
+            }
+            Err(e) => {
+                warn!("Some cache updates failed: {}, but continuing...", e);
+                self.update_timestamps().await?;
+            }
+        }
+        
+        info!("Selective update complete. All data types updated to maintain consistency.");
         Ok(())
     }
     
@@ -261,16 +319,49 @@ impl CacheManager {
         let mut rdr = csv::Reader::from_reader(bytes.as_ref());
         let mut processed_count = 0;
         
-        for result in rdr.deserialize() {
-            let record: GeneDependencyCsvRow = result?;
-            let gene_dep = GeneDependency::from(record);
-            
-            self.store_gene_dependency(&gene_dep).await?;
-            processed_count += 1;
-            
-            if processed_count % 1000 == 0 {
-                debug!("Processed {} gene dependency records...", processed_count);
+        // Check headers first to see if we have the expected format
+        let headers = rdr.headers()?;
+        debug!("Gene dependency CSV headers: {:?}", headers);
+        
+        // Check if required fields are present
+        let has_gene_field = headers.iter().any(|h| h.contains("gene") || h.contains("Gene"));
+        let has_entrez_field = headers.iter().any(|h| h.contains("entrez") || h.contains("Entrez"));
+        
+        if !has_gene_field || !has_entrez_field {
+            warn!("Gene dependency API has unexpected format. Skipping gene dependency data.");
+            warn!("Expected headers with 'gene' and 'entrez' fields, got: {:?}", headers);
+            return Ok(());
+        }
+        
+        // Batch insert for better performance
+        let mut batch: Vec<GeneDependency> = Vec::new();
+        let batch_size = 500; // Process in batches of 500 records
+        
+        for result in rdr.deserialize::<GeneDependencyCsvRow>() {
+            match result {
+                Ok(record) => {
+                    let gene_dep = GeneDependency::from(record);
+                    batch.push(gene_dep);
+                    processed_count += 1;
+                    
+                    // Process batch when it reaches the batch size
+                    if batch.len() >= batch_size {
+                        self.store_gene_dependencies_batch(&batch).await?;
+                        batch.clear();
+                        debug!("Processed {} gene dependency records...", processed_count);
+                    }
+                }
+                Err(e) => {
+                    // Log parsing error but continue processing
+                    warn!("Error parsing gene dependency record: {}, skipping...", e);
+                    continue;
+                }
             }
+        }
+        
+        // Process remaining records in the final batch
+        if !batch.is_empty() {
+            self.store_gene_dependencies_batch(&batch).await?;
         }
         
         info!("Cached {} gene dependency records", processed_count);
@@ -299,7 +390,7 @@ impl CacheManager {
                 name: row.get("name"),
                 release_date: row.get::<Option<String>, _>("release_date")
                     .and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.into())),
-                files: self.get_release_files(&release_id).await?,
+                files: self.get_files_by_release_id(&release_id).await?,
                 is_current: row.get("is_current"),
                 created_at: row.get::<Option<String>, _>("created_at")
                     .and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.into())),
@@ -340,33 +431,7 @@ impl CacheManager {
         Ok(datasets)
     }
     
-    async fn get_release_files(&self, release_id: &str) -> Result<Vec<DownloadFile>> {
-        let mut files = Vec::new();
-        
-        let rows = sqlx::query("SELECT * FROM files WHERE release_id = ?")
-            .bind(release_id)
-            .fetch_all(&self.db_pool)
-            .await?;
-        
-        for row in rows {
-            let file = DownloadFile {
-                id: Some(row.get("id")),
-                filename: row.get("filename"),
-                url: row.get("url"),
-                md5_hash: row.get("md5_hash"),
-                size: row.get::<Option<i64>, _>("size").map(|s| s as u64),
-                data_type: row.get("data_type"),
-                release_id: row.get("release_id"),
-                is_downloaded: row.get("is_downloaded"),
-                download_path: row.get("download_path"),
-                created_at: row.get::<Option<String>, _>("created_at")
-                    .and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.into())),
-            };
-            files.push(file);
-        }
-        
-        Ok(files)
-    }
+    
     
     // Stub implementations for other methods
     pub async fn search_cell_lines(&self, _query: &str) -> Result<Vec<CellLine>> {
@@ -403,12 +468,151 @@ impl CacheManager {
         })
     }
     
-    pub async fn get_dataset_files(&self, _dataset_id: &str) -> Result<Vec<DownloadFile>> {
-        Ok(Vec::new())
+    pub async fn get_dataset_files(&self, dataset_id: &str) -> Result<Vec<DownloadFile>> {
+        // 首先尝试从关联表获取
+        let rows = sqlx::query(
+            "SELECT f.* FROM dataset_files df JOIN files f ON df.file_id = f.id WHERE df.dataset_id = ?"
+        )
+        .bind(dataset_id)
+        .fetch_all(&self.db_pool)
+        .await?;
+        
+        if !rows.is_empty() {
+            let files: Vec<DownloadFile> = rows.iter()
+                .map(|row| self.row_to_download_file(row))
+                .collect();
+            return Ok(files);
+        }
+        
+        // 如果关联表为空，使用名称匹配作为后备方案
+        let datasets = self.get_datasets(None).await?;
+        let dataset = datasets.iter()
+            .find(|d| d.id == dataset_id || d.display_name == dataset_id)
+            .ok_or_else(|| DepMapError::NotFound(format!("Dataset '{}' not found", dataset_id)))?;
+        
+        let pattern = format!("%{}%", dataset.display_name);
+        let file_rows = sqlx::query(
+            "SELECT * FROM files WHERE filename LIKE ? OR data_type LIKE ?"
+        )
+        .bind(&pattern)
+        .bind(&dataset.data_type)
+        .fetch_all(&self.db_pool)
+        .await?;
+        
+        let files: Vec<DownloadFile> = file_rows.iter()
+            .map(|row| self.row_to_download_file(row))
+            .collect();
+        
+        Ok(files)
     }
     
     pub async fn get_current_release_core_files(&self) -> Result<Vec<DownloadFile>> {
-        Ok(Vec::new())
+        let releases = self.get_releases(None).await?;
+        
+        // 策略1: 查找标记为当前的release
+        let current = releases.iter()
+            .find(|r| r.is_current)
+            .or_else(|| {
+                // 策略2: 查找最新的release
+                releases.iter()
+                    .max_by_key(|r| r.release_date.unwrap_or_else(|| DateTime::parse_from_rfc3339("1970-01-01T00:00:00Z").unwrap().with_timezone(&Utc)))
+            });
+        
+        match current {
+            Some(release) => {
+                // 选择核心数据类型的文件
+                let core_types = vec![
+                    "CRISPR".to_string(),
+                    "Expression".to_string(), 
+                    "Mutations".to_string(),
+                    "CN".to_string(),
+                    "RNAi".to_string(),
+                    "Drug screen".to_string(),
+                ];
+                
+                let core_files: Vec<DownloadFile> = release.files.clone()
+                    .into_iter()
+                    .filter(|f| {
+                        f.data_type.as_ref()
+                            .map(|dt| core_types.contains(dt))
+                            .unwrap_or(false)
+                    })
+                    .collect();
+                
+                Ok(core_files)
+            }
+            None => Err(DepMapError::NotFound("No current release found".to_string()))
+        }
+    }
+    
+    pub async fn get_releases_files(&self, release_name: &str) -> Result<Vec<DownloadFile>> {
+        let releases = self.get_releases(Some(release_name)).await?;
+        
+        if releases.is_empty() {
+            return Err(DepMapError::NotFound(format!("Release '{}' not found", release_name)));
+        }
+        
+        // 合并所有匹配release的文件
+        let all_files: Vec<DownloadFile> = releases
+            .into_iter()
+            .flat_map(|r| r.files)
+            .collect();
+        
+        Ok(all_files)
+    }
+
+    // Private method for internal use - gets files by release ID without recursion
+    async fn get_files_by_release_id(&self, release_id: &str) -> Result<Vec<DownloadFile>> {
+        let mut files = Vec::new();
+        
+        let rows = sqlx::query("SELECT * FROM files WHERE release_id = ?")
+            .bind(release_id)
+            .fetch_all(&self.db_pool)
+            .await?;
+        
+        for row in rows {
+            let file = DownloadFile {
+                id: Some(row.get("id")),
+                filename: row.get("filename"),
+                url: row.get("url"),
+                md5_hash: row.get("md5_hash"),
+                size: row.get::<Option<i64>, _>("size").map(|s| s as u64),
+                data_type: row.get("data_type"),
+                release_id: row.get("release_id"),
+                is_downloaded: row.get("is_downloaded"),
+                download_path: row.get("download_path"),
+                created_at: row.get::<Option<String>, _>("created_at")
+                    .and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.into())),
+            };
+            files.push(file);
+        }
+        
+        Ok(files)
+    }
+
+    pub async fn get_release_files(&self, release_name: &str, data_type_filter: Option<&str>) -> Result<Vec<DownloadFile>> {
+        let releases = self.get_releases(Some(release_name)).await?;
+        
+        if releases.is_empty() {
+            return Err(DepMapError::NotFound(format!("Release '{}' not found", release_name)));
+        }
+        
+        // Collect files from all matching releases and filter by data type if requested
+        let all_files: Vec<DownloadFile> = releases
+            .into_iter()
+            .flat_map(|r| r.files)
+            .filter(|f| {
+                if let Some(data_type) = data_type_filter {
+                    f.data_type.as_ref()
+                        .map(|dt| dt.to_lowercase().contains(&data_type.to_lowercase()))
+                        .unwrap_or(false)
+                } else {
+                    true // No filter, include all files
+                }
+            })
+            .collect();
+        
+        Ok(all_files)
     }
     
     // Helper methods
@@ -430,8 +634,25 @@ impl CacheManager {
         Ok(())
     }
     
+    /// Convert database row to DownloadFile
+    fn row_to_download_file(&self, row: &sqlx::sqlite::SqliteRow) -> DownloadFile {
+        DownloadFile {
+            id: Some(row.get("id")),
+            filename: row.get("filename"),
+            url: row.get("url"),
+            md5_hash: row.get("md5_hash"),
+            size: row.get::<Option<i64>, _>("size").map(|s| s as u64),
+            data_type: row.get("data_type"),
+            release_id: row.get("release_id"),
+            is_downloaded: row.get("is_downloaded"),
+            download_path: row.get("download_path"),
+            created_at: row.get::<Option<String>, _>("created_at")
+                .and_then(|s| DateTime::parse_from_rfc3339(&s).ok().map(|dt| dt.into())),
+        }
+    }
+    
     async fn store_dataset(&self, dataset: &Dataset) -> Result<()> {
-        sqlx::query("INSERT OR REPLACE INTO datasets (id, display_name, data_type, download_entry_url, created_at) VALUES (?, ?, ?, ?, ?)")
+        sqlx::query("INSERT OR REPLACE INTO datasets (id, display_name, data_type, download_entry_url, created_at) VALUES (?, ?, ?, ?, ?, ?)")
             .bind(&dataset.id)
             .bind(&dataset.display_name)
             .bind(&dataset.data_type)
@@ -442,6 +663,8 @@ impl CacheManager {
         
         Ok(())
     }
+    
+    
     
     async fn store_file(&self, file: &DownloadFile) -> Result<()> {
         sqlx::query("INSERT OR REPLACE INTO files (filename, url, md5_hash, size, release_id, data_type, is_downloaded, download_path, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
@@ -472,6 +695,52 @@ impl CacheManager {
             .bind(&gene_dep.created_at.map(|d| d.to_rfc3339()))
             .execute(&self.db_pool)
             .await?;
+        
+        Ok(())
+    }
+    
+    async fn store_gene_dependencies_batch(&self, gene_deps: &[GeneDependency]) -> Result<()> {
+        if gene_deps.is_empty() {
+            return Ok(());
+        }
+        
+        // Begin transaction
+        let mut tx = self.db_pool.begin().await?;
+        
+        // Pre-convert all created_at timestamps to avoid lifetime issues
+        let mut params = Vec::new();
+        for gene_dep in gene_deps {
+            let created_at_str = gene_dep.created_at.map(|d| d.to_rfc3339());
+            params.push((
+                gene_dep.entrez_id as i64,
+                gene_dep.gene.clone(),
+                gene_dep.dataset.clone(),
+                gene_dep.dependent_cell_lines,
+                gene_dep.cell_lines_with_data,
+                gene_dep.strongly_selective.clone(),
+                gene_dep.common_essential.clone(),
+                created_at_str,
+            ));
+        }
+        
+        // Use the UNALL logging statement for faster bulk operations
+        for (entrez_id, gene, dataset, dependent_cell_lines, cell_lines_with_data, 
+             strongly_selective, common_essential, created_at_str) in params {
+            sqlx::query("INSERT OR REPLACE INTO gene_dependencies (entrez_id, gene, dataset, dependent_cell_lines, cell_lines_with_data, strongly_selective, common_essential, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+                .bind(entrez_id)
+                .bind(&gene)
+                .bind(&dataset)
+                .bind(dependent_cell_lines)
+                .bind(cell_lines_with_data)
+                .bind(&strongly_selective)
+                .bind(&common_essential)
+                .bind(&created_at_str)
+                .execute(&mut *tx)
+                .await?;
+        }
+        
+        // Commit transaction
+        tx.commit().await?;
         
         Ok(())
     }
@@ -574,5 +843,86 @@ impl CacheManager {
             total_size_mb: (total_size_mb / (1024 * 1024)) as u64,
             last_updated,
         })
+    }
+    
+    /// Clear all cached data
+    pub async fn clear_all_cache(&self) -> Result<()> {
+        info!("Clearing all cached data");
+        
+        // Get all downloaded files to delete from disk
+        let downloaded_files: Vec<String> = sqlx::query_scalar("SELECT download_path FROM files WHERE is_downloaded = TRUE AND download_path IS NOT NULL")
+            .fetch_all(&self.db_pool)
+            .await?;
+            
+        // Delete files from disk
+        for file_path in downloaded_files {
+            if let Err(e) = fs::remove_file(&file_path).await {
+                warn!("Failed to delete file {}: {}", file_path, e);
+            }
+        }
+        
+        // Clear all tables
+        sqlx::query("DELETE FROM gene_dependencies").execute(&self.db_pool).await?;
+        sqlx::query("DELETE FROM cell_lines").execute(&self.db_pool).await?;
+        sqlx::query("DELETE FROM files").execute(&self.db_pool).await?;
+        sqlx::query("DELETE FROM datasets").execute(&self.db_pool).await?;
+        sqlx::query("DELETE FROM releases").execute(&self.db_pool).await?;
+        sqlx::query("DELETE FROM cache_metadata").execute(&self.db_pool).await?;
+        
+        info!("All cached data cleared successfully");
+        Ok(())
+    }
+    
+    /// Clear cached data of a specific type
+    pub async fn clear_cache_by_data_type(&self, data_type: &str) -> Result<usize> {
+        info!("Clearing cached data of type: {}", data_type);
+        
+        let data_type_pattern = format!("%{}%", data_type);
+        
+        // Get files to delete from disk
+        let downloaded_files: Vec<String> = sqlx::query_scalar(
+            "SELECT download_path FROM files WHERE data_type LIKE ? AND is_downloaded = TRUE AND download_path IS NOT NULL"
+        )
+        .bind(&data_type_pattern)
+        .fetch_all(&self.db_pool)
+        .await?;
+        
+        // Delete files from disk
+        for file_path in downloaded_files {
+            if let Err(e) = fs::remove_file(&file_path).await {
+                warn!("Failed to delete file {}: {}", file_path, e);
+            }
+        }
+        
+        // Delete related records
+        let deleted_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM files WHERE data_type LIKE ?"
+        )
+        .bind(&data_type_pattern)
+        .fetch_one(&self.db_pool)
+        .await?;
+        
+        sqlx::query("DELETE FROM files WHERE data_type LIKE ?")
+            .bind(&data_type_pattern)
+            .execute(&self.db_pool)
+            .await?;
+        
+        // Check for any datasets matching this data type and remove them
+        let deleted_datasets: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM datasets WHERE data_type LIKE ?"
+        )
+        .bind(&data_type_pattern)
+        .fetch_one(&self.db_pool)
+        .await?;
+        
+        sqlx::query("DELETE FROM datasets WHERE data_type LIKE ?")
+            .bind(&data_type_pattern)
+            .execute(&self.db_pool)
+            .await?;
+            
+        info!("Cleared {} files and {} datasets of type {}", 
+              deleted_count, deleted_datasets, data_type);
+        
+        Ok(deleted_count as usize)
     }
 }

@@ -1,5 +1,5 @@
 use crate::cache_manager::CacheManager;
-use crate::cli::Commands;
+use crate::cli::{Commands, ListCommands, DownloadCommands};
 use crate::downloader::Downloader;
 use crate::error::{DepMapError, Result};
 use crate::models::*;
@@ -20,11 +20,11 @@ pub async fn handle_command(
         Commands::Update { force, data_type } => {
             handle_update(&cache, force, data_type).await?;
         }
-        Commands::List { release, data_type, detailed } => {
-            handle_list(&cache, release, data_type, detailed).await?;
+        Commands::List { command } => {
+            handle_list_command(&cache, command).await?;
         }
-        Commands::Download { dataset, file, output, workers, skip_existing, verify_checksum } => {
-            handle_download(&cache, dataset, file, output, workers, skip_existing, verify_checksum).await?;
+        Commands::Download { command, dataset, file, output, workers, skip_existing, verify_checksum } => {
+            handle_download(&cache, command, dataset, file, output, workers, skip_existing, verify_checksum).await?;
         }
         Commands::Search { query, cell_line, dataset, limit } => {
             handle_search(&cache, &query, cell_line, dataset, limit).await?;
@@ -49,16 +49,255 @@ async fn handle_update(
     
     if let Some(types) = data_type_filter {
         println!("Updating specific data types: {:?}", types);
-        // TODO: Implement selective updates
-        warn!("Selective data type updates not yet implemented, updating all...");
+        cache.update_cache_selective(force, types).await?;
+    } else {
+        cache.update_cache(force).await?;
     }
-    
-    cache.update_cache(force).await?;
     
     println!("{}", "✅ Cache updated successfully!".bright_green());
     Ok(())
 }
 
+async fn handle_list_command(
+    cache: &CacheManager,
+    command: Option<ListCommands>,
+) -> Result<()> {
+    match command {
+        Some(ListCommands::Releases { detailed }) => {
+            handle_list_releases(cache, detailed).await?;
+        }
+        Some(ListCommands::Datasets { data_type, detailed }) => {
+            handle_list_datasets(cache, data_type, detailed).await?;
+        }
+        Some(ListCommands::Files { release, detailed }) => {
+            handle_list_files(cache, &release, detailed).await?;
+        }
+        None => {
+            // Default behavior: show overview
+            handle_list_overview(cache).await?;
+        }
+    }
+    
+    Ok(())
+}
+
+async fn handle_list_overview(cache: &CacheManager) -> Result<()> {
+    println!("{}", "📦 DepMap Data Overview".bright_cyan().bold());
+    println!("{}", "─".repeat(50).dimmed());
+    
+    // Get releases
+    let releases = cache.get_releases(None).await?;
+    println!("\n{}", format!("📦 Available Releases ({})", releases.len()).bright_green().bold());
+    
+    // Show recent releases (up to 10)
+    let mut recent_releases = releases.clone();
+    recent_releases.sort_by(|a, b| b.release_date.cmp(&a.release_date));
+    recent_releases.truncate(10);
+    
+    for (i, release) in recent_releases.iter().enumerate() {
+        let is_current = release.is_current || release.name.contains("25Q3");
+        let indicator = if is_current { "🌟" } else { "  " };
+        let date_str = release.release_date
+            .map(|d| d.format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|| "Unknown".to_string());
+        
+        println!("  {} {} ({})", indicator, release.name.bright_white(), date_str.dimmed());
+    }
+    
+    if releases.len() > 10 {
+        println!("  {} ... and {} more releases", "   ".dimmed(), releases.len() - 10);
+    }
+    
+    // Get datasets
+    let datasets = cache.get_datasets(None).await?;
+    
+    // Group datasets by type
+    let mut dataset_types = std::collections::HashMap::new();
+    for dataset in &datasets {
+        dataset_types.entry(dataset.data_type.clone())
+            .or_insert_with(Vec::new)
+            .push(dataset);
+    }
+    
+    println!("\n{}", format!("📊 Available Dataset Types ({})", dataset_types.len()).bright_green().bold());
+    
+    let mut types: Vec<_> = dataset_types.keys().collect();
+    types.sort();
+    
+    for data_type in types {
+        let datasets_of_type = &dataset_types[data_type];
+        if datasets_of_type.len() == 1 {
+            println!("  🔬 {} (1 dataset)", data_type.bright_white());
+        } else {
+            println!("  🔬 {} ({} datasets)", data_type.bright_white(), datasets_of_type.len());
+        }
+        
+        // Show a few example dataset names
+        for (i, dataset) in datasets_of_type.iter().take(2).enumerate() {
+            println!("    • {}", dataset.display_name.dimmed());
+        }
+        
+        if datasets_of_type.len() > 2 {
+            println!("    • ... and {} more", datasets_of_type.len() - 2);
+        }
+    }
+    
+    println!("\n{}", "💡 Use 'list releases', 'list datasets', or 'list files <release>' for more details".bright_yellow());
+    
+    Ok(())
+}
+
+async fn handle_list_releases(cache: &CacheManager, detailed: bool) -> Result<()> {
+    println!("{}", "📦 DepMap Releases".bright_cyan().bold());
+    println!("{}", "─".repeat(50).dimmed());
+    
+    let releases = cache.get_releases(None).await?;
+    
+    if releases.is_empty() {
+        println!("{} No releases found", "⚠️".yellow());
+        return Ok(());
+    }
+    
+    // Sort releases by date (newest first)
+    let mut sorted_releases = releases;
+    sorted_releases.sort_by(|a, b| b.release_date.cmp(&a.release_date));
+    
+    for release in sorted_releases {
+        let is_current = release.is_current || release.name.contains("25Q3");
+        let current_indicator = if is_current { " 🌟 CURRENT" } else { "" };
+        let date_str = release.release_date
+            .map(|d| d.format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|| "Unknown".to_string());
+        
+        println!("{}", format!("📦 {}{} ({})", release.name.bold(), current_indicator.bright_green(), date_str.dimmed()));
+        
+        if detailed {
+            println!("  🆔 ID: {}", release.id.italic());
+            println!("  📁 Files: {}", release.files.len().to_string().bright_blue());
+            println!("  🕒 Created: {}", release.created_at
+                .map(|d| d.format("%Y-%m-%d %H:%M").to_string())
+                .unwrap_or_else(|| "Unknown".to_string())
+                .dimmed());
+        }
+        
+        println!();
+    }
+    
+    Ok(())
+}
+
+async fn handle_list_datasets(cache: &CacheManager, data_type_filter: Option<String>, detailed: bool) -> Result<()> {
+    println!("{}", "📊 DepMap Datasets".bright_cyan().bold());
+    println!("{}", "─".repeat(50).dimmed());
+    
+    let datasets = cache.get_datasets(data_type_filter.as_deref()).await?;
+    
+    if datasets.is_empty() {
+        let filter_msg = data_type_filter
+            .map(|t| format!(" of type '{}'", t))
+            .unwrap_or_else(|| "".to_string());
+        println!("{} No datasets found{}", "⚠️".yellow(), filter_msg);
+        return Ok(());
+    }
+    
+    // Group datasets by type
+    let mut dataset_groups = std::collections::HashMap::new();
+    for dataset in &datasets {
+        dataset_groups.entry(dataset.data_type.clone())
+            .or_insert_with(Vec::new)
+            .push(dataset);
+    }
+    
+    let mut types: Vec<_> = dataset_groups.keys().collect();
+    types.sort();
+    
+    for data_type in types {
+        let datasets_of_type = &dataset_groups[data_type];
+        
+        println!("{}", format!("🔬 {} ({} datasets)", data_type.bright_green().bold(), datasets_of_type.len()));
+        
+        for dataset in datasets_of_type {
+            println!("  📋 {}", dataset.display_name.bright_white());
+            
+            if detailed {
+                println!("    🆔 ID: {}", dataset.id.italic());
+                if let Some(url) = &dataset.download_entry_url {
+                    println!("    🔗 URL: {}", url.dimmed());
+                }
+                println!("    🕒 Created: {}", dataset.created_at
+                    .map(|d| d.format("%Y-%m-%d %H:%M").to_string())
+                    .unwrap_or_else(|| "Unknown".to_string())
+                    .dimmed());
+            }
+        }
+        println!();
+    }
+    
+    Ok(())
+}
+
+async fn handle_list_files(cache: &CacheManager, release_name: &str, detailed: bool) -> Result<()> {
+    println!("{}", format!("📁 Files for release: {}", release_name).bright_cyan().bold());
+    println!("{}", "─".repeat(50).dimmed());
+    
+    let releases = cache.get_releases(Some(release_name)).await?;
+    
+    if releases.is_empty() {
+        println!("{} No releases found matching '{}'", "⚠️".yellow(), release_name);
+        return Ok(());
+    }
+    
+    for release in releases {
+        println!("{}", format!("📦 Release: {} ({})", release.name.bright_white(), 
+            release.release_date.map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_else(|| "Unknown".to_string())
+        ));
+        
+        if detailed {
+            println!("  📁 Files ({} total):", release.files.len());
+        }
+        
+        // Group files by data type
+        let mut files_by_type = std::collections::HashMap::new();
+        for file in &release.files {
+            let data_type = file.data_type.as_deref().unwrap_or("Unknown");
+            files_by_type.entry(data_type.to_string())
+                .or_insert_with(Vec::new)
+                .push(file);
+        }
+        
+        let mut types: Vec<_> = files_by_type.keys().collect();
+        types.sort();
+        
+        for data_type in types {
+            let files_of_type = &files_by_type[data_type];
+            
+            println!("\n  {} {} ({} files)", if detailed { "🔬" } else { "  🔬" }, data_type.bright_green(), files_of_type.len());
+            
+            for file in files_of_type {
+                if detailed {
+                    let status = if file.is_downloaded { "✅" } else { "⬜" };
+                    let size_mb = file.size.map(|s| format!("{} MB", s / (1024 * 1024))).unwrap_or_else(|| "Unknown size".to_string());
+                    
+                    println!("    {} {} ({})", status, file.filename.bright_white(), size_mb.dimmed());
+                    println!("      🆔 ID: {}", file.id.unwrap_or(0));
+                    println!("      🔗 URL: {}", file.url.chars().take(80).collect::<String>() + "...");
+                    
+                    if let Some(hash) = &file.md5_hash {
+                        println!("      🔐 MD5: {}", &hash[..8]);
+                    }
+                } else {
+                    println!("    📄 {}", file.filename.bright_white());
+                }
+            }
+        }
+        
+        println!();
+    }
+    
+    Ok(())
+}
+
+// Legacy function for backward compatibility
 async fn handle_list(
     cache: &CacheManager,
     release: Option<String>,
@@ -152,6 +391,7 @@ async fn handle_list(
 
 async fn handle_download(
     cache: &CacheManager,
+    command: Option<DownloadCommands>,
     dataset: Option<String>,
     file: Option<String>,
     output: String,
@@ -159,26 +399,40 @@ async fn handle_download(
     skip_existing: bool,
     verify_checksum: bool,
 ) -> Result<()> {
-    let download_items = match (dataset, file) {
-        (Some(dataset_id), None) => {
-            println!("📥 Downloading dataset: {}", dataset_id.bright_green());
-            cache.get_dataset_files(&dataset_id).await?
+    let download_items = match command {
+        Some(DownloadCommands::Release { name, data_type }) => {
+            println!("📥 Downloading release: {}", name.bright_green());
+            cache.get_release_files(&name, data_type.as_deref()).await?
         }
-        (None, Some(filename)) => {
-            println!("📥 Downloading file: {}", filename.bright_green());
-            vec![cache.get_file_by_name(&filename).await?]
+        Some(DownloadCommands::Dataset { id }) => {
+            println!("📥 Downloading dataset: {}", id.bright_green());
+            cache.get_dataset_files(&id).await?
         }
-        (None, None) => {
-            println!("📥 Downloading current release core files...");
-            cache.get_current_release_core_files().await?
-        }
-        (Some(_), Some(_)) => {
-            return Err(DepMapError::InvalidArguments);
+        None => {
+            // Backward compatibility with old arguments
+            match (dataset, file) {
+                (Some(dataset_id), None) => {
+                    println!("📥 Downloading dataset: {}", dataset_id.bright_green());
+                    cache.get_dataset_files(&dataset_id).await?
+                }
+                (None, Some(filename)) => {
+                    println!("📥 Downloading file: {}", filename.bright_green());
+                    vec![cache.get_file_by_name(&filename).await?]
+                }
+                (None, None) => {
+                    println!("📥 Downloading current release core files...");
+                    cache.get_current_release_core_files().await?
+                }
+                (Some(_), Some(_)) => {
+                    return Err(DepMapError::InvalidArguments);
+                }
+            }
         }
     };
     
     if download_items.is_empty() {
         println!("{} No files found to download", "⚠️".yellow());
+        println!("💡 Try running 'update' first to refresh the cache");
         return Ok(());
     }
     
@@ -311,18 +565,18 @@ async fn handle_stats(
 }
 
 async fn handle_clear(
-    _cache: &CacheManager,
+    cache: &CacheManager,
     all: bool,
     data_type: Option<String>,
 ) -> Result<()> {
     if all {
         println!("{} Clearing all cached data...", "🗑️".bright_red());
-        // TODO: Implement cache clearing
-        println!("{}", "⚠️ Cache clearing not yet implemented".yellow());
+        cache.clear_all_cache().await?;
+        println!("{}", "✅ All cached data cleared successfully!".bright_green());
     } else if let Some(d_type) = data_type {
         println!("{} Clearing cached data of type: {}", "🗑️".bright_red(), d_type);
-        // TODO: Implement selective cache clearing
-        println!("{}", "⚠️ Selective cache clearing not yet implemented".yellow());
+        let deleted_count = cache.clear_cache_by_data_type(&d_type).await?;
+        println!("{}", format!("✅ Cleared {} files of type '{}'!", deleted_count, d_type).bright_green());
     } else {
         println!("{}", "❌ No clear option specified. Use --all or --data-type".red());
     }

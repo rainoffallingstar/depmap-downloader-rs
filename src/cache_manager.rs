@@ -3,7 +3,8 @@ use crate::models::*;
 use chrono::{DateTime, Utc, Duration};
 use sqlx::{SqlitePool, Row};
 use std::path::PathBuf;
-use tracing::{info, warn, debug};
+use std::process::Command;
+use tracing::{info, warn, debug, error};
 use tokio::fs;
 
 pub struct CacheManager {
@@ -20,9 +21,54 @@ impl CacheManager {
         // Create cache directory if it doesn't exist
         fs::create_dir_all(cache_dir).await?;
         
-        // Initialize database connection pool
-        let db_url = format!("sqlite:{}", database_url);
-        let db_pool = SqlitePool::connect(&db_url).await?;
+        // Initialize database connection pool with error handling
+        let db_url = format!("sqlite:{}?mode=rwc", database_url);
+        info!("Attempting to connect to database: {}", db_url);
+        
+        // Try to create parent directory if needed
+        if let Some(parent) = PathBuf::from(database_url).parent() {
+            fs::create_dir_all(parent).await?;
+        }
+        
+        let db_pool = match SqlitePool::connect(&db_url).await {
+            Ok(pool) => {
+                info!("Database connection successful");
+                pool
+            },
+            Err(sqlx::Error::Database(db_err)) => {
+                let message = db_err.message();
+                warn!("Database connection error: {}", message);
+                
+                // Check if this is a WAL file related error AND database file exists
+                let db_path = PathBuf::from(database_url);
+                let db_exists = db_path.exists();
+                
+                if message.contains("unable to open database file") && db_exists {
+                    warn!("Database exists but connection failed, attempting WAL recovery...");
+                    Self::attempt_database_recovery(database_url).await?;
+                    info!("Attempting to reconnect after recovery...");
+                    SqlitePool::connect(&db_url).await?
+                } else {
+                    warn!("Database connection failed, trying with different connection options...");
+                    // Try with explicit create mode
+                    let fallback_url = format!("sqlite:{}?mode=rwc", database_url);
+                    match SqlitePool::connect(&fallback_url).await {
+                        Ok(pool) => {
+                            info!("Database created successfully with fallback URL");
+                            pool
+                        },
+                        Err(e) => {
+                            error!("Failed to create database: {:?}", e);
+                            return Err(DepMapError::DatabaseError(e));
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Non-database error during connection: {:?}", e);
+                return Err(DepMapError::DatabaseError(e));
+            }
+        };
         
         // Configure database for better concurrent performance
         sqlx::query("PRAGMA busy_timeout = 30000")  // 30 second timeout
@@ -33,9 +79,18 @@ impl CacheManager {
             .execute(&db_pool)
             .await?;
         
-        sqlx::query("PRAGMA journal_mode = WAL")     // Enable Write-Ahead Logging for better concurrency
+        // Try to enable WAL mode with fallback to DELETE mode
+        match sqlx::query("PRAGMA journal_mode = WAL")
             .execute(&db_pool)
-            .await?;
+            .await {
+            Ok(_) => info!("WAL mode enabled for better performance"),
+            Err(e) => {
+                warn!("Failed to enable WAL mode, falling back to DELETE mode: {}", e);
+                sqlx::query("PRAGMA journal_mode = DELETE")
+                    .execute(&db_pool)
+                    .await?;
+            }
+        }
         
         // Run migrations
         Self::run_migrations(&db_pool).await?;
@@ -50,6 +105,54 @@ impl CacheManager {
             cache_dir: cache_dir.clone(),
             client,
         })
+    }
+    
+    /// Attempt to recover database from WAL mode issues
+    async fn attempt_database_recovery(database_url: &str) -> Result<()> {
+        info!("Attempting database recovery...");
+        
+        // Database file existence is already checked by the caller
+        let db_path = PathBuf::from(database_url);
+        
+        // Try to switch to DELETE mode using sqlite3 command
+        let output = Command::new("sqlite3")
+            .arg(database_url)
+            .arg("PRAGMA journal_mode = DELETE;")
+            .output();
+            
+        match output {
+            Ok(result) => {
+                if result.status.success() {
+                    info!("Database recovery successful: switched to DELETE mode");
+                    return Ok(());
+                } else {
+                    let stderr = String::from_utf8_lossy(&result.stderr);
+                    warn!("SQLite command failed: {}", stderr);
+                }
+            }
+            Err(e) => {
+                warn!("Failed to execute sqlite3 command: {}", e);
+            }
+        }
+        
+        // Fallback: try to remove WAL files if they exist
+        let wal_path = db_path.with_extension("db-wal");
+        let shm_path = db_path.with_extension("db-shm");
+        
+        if wal_path.exists() {
+            if let Err(e) = tokio::fs::remove_file(&wal_path).await {
+                warn!("Failed to remove WAL file {}: {}", wal_path.display(), e);
+            }
+        }
+        
+        if shm_path.exists() {
+            if let Err(e) = tokio::fs::remove_file(&shm_path).await {
+                warn!("Failed to remove SHM file {}: {}", shm_path.display(), e);
+            }
+        }
+        
+        info!("Database recovery attempt completed");
+        Ok(())
     }
     
     async fn run_migrations(db_pool: &SqlitePool) -> Result<()> {
@@ -694,12 +797,13 @@ impl CacheManager {
     }
     
     async fn store_dataset(&self, dataset: &Dataset) -> Result<()> {
-        sqlx::query("INSERT OR REPLACE INTO datasets (id, display_name, data_type, download_entry_url, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+        sqlx::query("INSERT OR REPLACE INTO datasets (id, display_name, data_type, download_entry_url, created_at, last_updated) VALUES (?, ?, ?, ?, ?, ?)")
             .bind(&dataset.id)
             .bind(&dataset.display_name)
             .bind(&dataset.data_type)
             .bind(&dataset.download_entry_url)
             .bind(&dataset.created_at.map(|d| d.to_rfc3339()))
+            .bind(&dataset.created_at.map(|d| d.to_rfc3339())) // Use created_at as last_updated
             .execute(&self.db_pool)
             .await?;
         

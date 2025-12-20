@@ -35,6 +35,21 @@ cargo build --release
 ./target/release/depmap-downloader --help
 ```
 
+### 🛠️ Installation
+
+You can run the application in any directory without pre-existing setup:
+
+```bash
+# Download pre-built binary (when available) or build from source
+./depmap-downloader update  # Automatically creates database on first run
+```
+
+The application automatically handles:
+- ✅ Database creation and initialization
+- ✅ WAL mode error recovery  
+- ✅ Directory creation for cache files
+- ✅ Migration and schema updates
+
 ## 💻 Usage Guide
 
 ### 🔄 Update Cache
@@ -202,6 +217,47 @@ depmap-downloader-rs/
 - **Download Performance** ⚡ - Configurable concurrent downloads with auto-retry
 - **Database Performance** 🔍 - SQLite indexing optimization for fast queries
 - **Smart Caching** 🧠 - Avoid duplicate downloads, save bandwidth
+
+## 🔧 Troubleshooting
+
+### Database Connection Issues
+
+If you encounter database connection errors, the application will automatically attempt recovery. Common issues:
+
+#### **"unable to open database file" Error**
+This occurs when SQLite WAL files are missing or corrupted. The application automatically:
+
+1. ✅ Detects WAL file corruption
+2. ✅ Switches to DELETE mode to recover
+3. ✅ Re-establishes database connection
+4. ✅ Restores normal operation
+
+#### **"Database file does not exist" in New Directories**
+The application automatically creates databases in new directories:
+
+```bash
+# Works in any directory - no setup required!
+mkdir -p /tmp/depmap-workspace && cd /tmp/depmap-workspace
+./depmap-downloader update  # Creates database automatically
+```
+
+#### Manual Recovery (If Needed)
+
+If automatic recovery fails:
+
+```bash
+# Switch to DELETE mode manually
+sqlite3 depmap_cache.db "PRAGMA journal_mode = DELETE;"
+
+# Verify database integrity
+sqlite3 depmap_cache.db ".tables"
+```
+
+### Performance Tips
+
+- Use `--data-type` filters to update specific data types only
+- Increase `--workers` for faster downloads on good connections  
+- Use `--force` only when needed to avoid unnecessary API calls
 
 ## 🔧 Development
 

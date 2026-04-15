@@ -22,8 +22,21 @@ Thumbs.db
 # Local cache and data files
 depmap_cache.db*
 depmap_data/
+alignment/
+alignment_v2/
+.depmap_cache/
 *.sqlite
 *.sqlite3
+*.duckdb
+*.npz
+*.xlsx
+*.parquet
+*.feather
+*.pkl
+*.joblib
+*.rds
+*.h5
+*.h5ad
 
 # Logs
 *.log

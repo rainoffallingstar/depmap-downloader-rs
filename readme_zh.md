@@ -32,7 +32,7 @@ cd depmap-downloader-rs
 cargo build --release
 
 # 运行程序
-./target/release/depmap-downloader --help
+./target/release/depdown --help
 ```
 
 ### 🎮 开发模式（更快构建）
@@ -42,7 +42,7 @@ cargo build --release
 cargo build
 
 # 运行开发版本
-./target/debug/depmap-downloader --help
+./target/debug/depdown --help
 ```
 
 ## 💻 使用指南
@@ -51,13 +51,13 @@ cargo build
 
 ```bash
 # 更新缓存（自动检查是否需要）
-./target/release/depmap-downloader update
+./target/release/depdown update
 
 # 强制更新
-./target/release/depmap-downloader update --force
+./target/release/depdown update --force
 
 # 更新特定数据类型
-./target/release/depmap-downloader update --data-type CRISPR --data-type Expression
+./target/release/depdown update --data-type CRISPR --data-type Expression
 
 # 支持的数据类型
 # CRISPR, Expression, Mutations, CN, RNAi, Drug screen, Protein
@@ -67,41 +67,41 @@ cargo build
 
 ```bash
 # 查看所有发布版本 📦
-./target/release/depmap-downloader list releases
+./target/release/depdown list releases
 
 # 详细版本信息
-./target/release/depmap-downloader list releases --detailed
+./target/release/depdown list releases --detailed
 
 # 查看特定数据类型 🧬
-./target/release/depmap-downloader list datasets --data-type CRISPR
+./target/release/depdown list datasets --data-type CRISPR
 
 # 查看版本文件详情 📁
-./target/release/depmap-downloader list files "DepMap Public 23Q4" --detailed
+./target/release/depdown list files "DepMap Public 23Q4" --detailed
 ```
 
 ### ⬇️ 下载数据
 
 ```bash
 # 🆕 下载整个发布版本
-./target/release/depmap-downloader download release "DepMap Public 23Q4"
+./target/release/depdown download release "DepMap Public 23Q4"
 
 # 🆕 下载特定数据类型
-./target/release/depmap-downloader download release "DepMap Public 23Q4" --data-type CRISPR
+./target/release/depdown download release "DepMap Public 23Q4" --data-type CRISPR
 
 # 🆕 下载特定数据集
-./target/release/depmap-downloader download dataset "CRISPR (DepMap Public 25Q3+Score, Chronos)"
+./target/release/depdown download dataset "CRISPR (DepMap Public 25Q3+Score, Chronos)"
 
 # ⚡ 高速下载（8个并发）
-./target/release/depmap-downloader download --workers 8 release "DepMap Public 25Q3"
+./target/release/depdown download --workers 8 release "DepMap Public 25Q3"
 
 # 跳过已存在文件
-./target/release/depmap-downloader download --skip-existing
+./target/release/depdown download --skip-existing
 
 # 验证文件完整性
-./target/release/depmap-downloader download --verify-checksum
+./target/release/depdown download --verify-checksum
 
 # 自定义选项组合
-./target/release/depmap-downloader download \
+./target/release/depdown download \
   --output ./my_data \
   --workers 8 \
   --skip-existing \
@@ -114,37 +114,37 @@ cargo build
 
 ```bash
 # 🆕 搜索基因（支持基因名和 Entrez ID）
-./target/release/depmap-downloader search TP53 -g
-./target/release/depmap-downloader search 7159 -g --limit 5
+./target/release/depdown search TP53 -g
+./target/release/depdown search 7159 -g --limit 5
 
 # 🔍 搜索细胞系
-./target/release/depmap-downloader search "A549" --cell-line
+./target/release/depdown search "A549" --cell-line
 
 # 📊 搜索数据集
-./target/release/depmap-downloader search "CRISPR" --dataset
+./target/release/depdown search "CRISPR" --dataset
 
 # 🎯 搜索所有类型（默认行为）
-./target/release/depmap-downloader search "BRCA1"
+./target/release/depdown search "BRCA1"
 ```
 
 ### 📈 查看统计
 
 ```bash
 # 缓存统计信息
-./target/release/depmap-downloader stats
+./target/release/depdown stats
 
 # 详细统计信息
-./target/release/depmap-downloader stats --detailed
+./target/release/depdown stats --detailed
 ```
 
 ### 🗑️ 清理缓存
 
 ```bash
 # 清理所有缓存
-./target/release/depmap-downloader clear --all
+./target/release/depdown clear --all
 
 # 清理特定数据类型缓存
-./target/release/depmap-downloader clear --data-type CRISPR
+./target/release/depdown clear --data-type CRISPR
 ```
 
 ## 💡 实用示例
@@ -153,37 +153,37 @@ cargo build
 
 ```bash
 # 搜索肿瘤抑制基因 TP53
-./target/release/depmap-downloader search TP53 -g
+./target/release/depdown search TP53 -g
 
 # 搜索癌基因 MYC
-./target/release/depmap-downloader search MYC -g --limit 10
+./target/release/depdown search MYC -g --limit 10
 
 # 按 Entrez ID 精确查找
-./target/release/depmap-downloader search 672 -g  # BRCA1
+./target/release/depdown search 672 -g  # BRCA1
 ```
 
 ### 📦 数据下载
 
 ```bash
 # 仅下载 CRISPR 数据（最新版本）
-./target/release/depmap-downloader download --skip-existing release "DepMap Public 25Q3" --data-type CRISPR
+./target/release/depdown download --skip-existing release "DepMap Public 25Q3" --data-type CRISPR
 
 # 下载多种数据类型
-./target/release/depmap-downloader download --workers 8 release "DepMap Public 23Q4" --data-type Expression
-./target/release/depmap-downloader download --workers 8 release "DepMap Public 23Q4" --data-type Mutations
+./target/release/depdown download --workers 8 release "DepMap Public 23Q4" --data-type Expression
+./target/release/depdown download --workers 8 release "DepMap Public 23Q4" --data-type Mutations
 ```
 
 ### 🔍 探索式研究
 
 ```bash
 # 查看可用版本
-./target/release/depmap-downloader list releases
+./target/release/depdown list releases
 
 # 浏览版本文件
-./target/release/depmap-downloader list files "DepMap Public 23Q4" --detailed
+./target/release/depdown list files "DepMap Public 23Q4" --detailed
 
 # 选择性下载
-./target/release/depmap-downloader download --verify-checksum release "DepMap Public 23Q4"
+./target/release/depdown download --verify-checksum release "DepMap Public 23Q4"
 ```
 
 ## 📊 支持的数据类型
@@ -280,16 +280,16 @@ ls -la depmap_cache.db
 curl -I https://depmap.org/portal/api
 
 # 查看详细日志
-./target/release/depmap-downloader --verbose update
+./target/release/depdown --verbose update
 ```
 
 ### 性能问题
 ```bash
 # 调整并发数
-./target/release/depmap-downloader download --workers 2
+./target/release/depdown download --workers 2
 
 # 清理缓存重建
-./target/release/depmap-downloader clear --all
+./target/release/depdown clear --all
 ```
 
 ## 📚 相关资源

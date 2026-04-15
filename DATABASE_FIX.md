@@ -1,7 +1,7 @@
 # SQLite 数据库连接错误修复
 
 ## 问题描述
-当运行 `./depmap-downloader update` 时出现以下错误：
+当运行 `./target/release/depdown update` 时出现以下错误：
 ```
 Database error: error returned from database: (code: 14) unable to open database file
 ```
@@ -30,7 +30,7 @@ sqlite3 depmap_cache.db "PRAGMA journal_mode = DELETE;"
 sqlite3 depmap_cache.db ".tables"
 
 # 测试应用程序
-./depmap-downloader update
+./target/release/depdown update
 ```
 
 ## 代码改进

@@ -32,7 +32,7 @@ cd depmap-downloader-rs
 cargo build --release
 
 # Run program
-./target/release/depmap-downloader --help
+./target/release/depdown --help
 ```
 
 ### 🛠️ Installation
@@ -41,7 +41,7 @@ You can run the application in any directory without pre-existing setup:
 
 ```bash
 # Download pre-built binary (when available) or build from source
-./depmap-downloader update  # Automatically creates database on first run
+./depdown update  # Automatically creates database on first run
 ```
 
 The application automatically handles:
@@ -56,75 +56,75 @@ The application automatically handles:
 
 ```bash
 # Update cache (automatically checks if needed)
-./target/release/depmap-downloader update
+./target/release/depdown update
 
 # Force update
-./target/release/depmap-downloader update --force
+./target/release/depdown update --force
 
 # Update specific data types
-./target/release/depmap-downloader update --data-type CRISPR --data-type Expression
+./target/release/depdown update --data-type CRISPR --data-type Expression
 ```
 
 ### 📋 List Data
 
 ```bash
 # View all releases 📦
-./target/release/depmap-downloader list releases
+./target/release/depdown list releases
 
 # View specific data types 🧬
-./target/release/depmap-downloader list datasets --data-type CRISPR
+./target/release/depdown list datasets --data-type CRISPR
 
 # View detailed release files 📁
-./target/release/depmap-downloader list files "DepMap Public 23Q4" --detailed
+./target/release/depdown list files "DepMap Public 23Q4" --detailed
 ```
 
 ### ⬇️ Download Data
 
 ```bash
 # 🆕 Download entire release
-./target/release/depmap-downloader download release "DepMap Public 23Q4"
+./target/release/depdown download release "DepMap Public 23Q4"
 
 # 🆕 Download specific data types
-./target/release/depmap-downloader download release "DepMap Public 23Q4" --data-type CRISPR
+./target/release/depdown download release "DepMap Public 23Q4" --data-type CRISPR
 
 # 🆕 Download specific dataset
-./target/release/depmap-downloader download dataset "CRISPR (DepMap Public 25Q3+Score, Chronos)"
+./target/release/depdown download dataset "CRISPR (DepMap Public 25Q3+Score, Chronos)"
 
 # ⚡ High-speed download (8 workers)
-./target/release/depmap-downloader download --workers 8 release "DepMap Public 25Q3"
+./target/release/depdown download --workers 8 release "DepMap Public 25Q3"
 
 # Skip existing files
-./target/release/depmap-downloader download --skip-existing
+./target/release/depdown download --skip-existing
 
 # Verify file integrity
-./target/release/depmap-downloader download --verify-checksum
+./target/release/depdown download --verify-checksum
 ```
 
 ### 🔍 Search Data
 
 ```bash
 # 🆕 Search genes (supports gene names and Entrez IDs)
-./target/release/depmap-downloader search TP53 -g
-./target/release/depmap-downloader search 7159 -g --limit 5
+./target/release/depdown search TP53 -g
+./target/release/depdown search 7159 -g --limit 5
 
 # 🔍 Search cell lines
-./target/release/depmap-downloader search "A549" --cell-line
+./target/release/depdown search "A549" --cell-line
 
 # 📊 Search datasets
-./target/release/depmap-downloader search "CRISPR" --dataset
+./target/release/depdown search "CRISPR" --dataset
 
 # 🎯 Search all types (default behavior)
-./target/release/depmap-downloader search "BRCA1"
+./target/release/depdown search "BRCA1"
 ```
 
 ### 📈 View Statistics
 
 ```bash
 # Cache statistics
-./target/release/depmap-downloader stats
+./target/release/depdown stats
 
 # Detailed statistics
-./target/release/depmap-downloader stats --detailed
+./target/release/depdown stats --detailed
 ```
 
 ## 💡 Practical Examples
@@ -132,35 +132,35 @@ The application automatically handles:
 ### 🧬 Gene Research
 ```bash
 # Search tumor suppressor gene TP53
-./target/release/depmap-downloader search TP53 -g
+./target/release/depdown search TP53 -g
 
 # Find oncogene MYC
-./target/release/depmap-downloader search MYC -g --limit 10
+./target/release/depdown search MYC -g --limit 10
 
 # Search by Entrez ID
-./target/release/depmap-downloader search 672 -g  # BRCA1
+./target/release/depdown search 672 -g  # BRCA1
 ```
 
 ### 📦 Data Downloads
 ```bash
 # Download CRISPR data only (latest version)
-./target/release/depmap-downloader download --skip-existing release "DepMap Public 25Q3" --data-type CRISPR
+./target/release/depdown download --skip-existing release "DepMap Public 25Q3" --data-type CRISPR
 
 # Download multiple data types
-./target/release/depmap-downloader download --workers 8 release "DepMap Public 23Q4" --data-type Expression
-./target/release/depmap-downloader download --workers 8 release "DepMap Public 23Q4" --data-type Mutations
+./target/release/depdown download --workers 8 release "DepMap Public 23Q4" --data-type Expression
+./target/release/depdown download --workers 8 release "DepMap Public 23Q4" --data-type Mutations
 ```
 
 ### 🔍 Exploratory Research
 ```bash
 # View available releases
-./target/release/depmap-downloader list releases
+./target/release/depdown list releases
 
 # Browse release files
-./target/release/depmap-downloader list files "DepMap Public 23Q4" --detailed
+./target/release/depdown list files "DepMap Public 23Q4" --detailed
 
 # Selective download
-./target/release/depmap-downloader download --verify-checksum release "DepMap Public 23Q4"
+./target/release/depdown download --verify-checksum release "DepMap Public 23Q4"
 ```
 
 ## 📊 Supported Data Types
@@ -238,7 +238,7 @@ The application automatically creates databases in new directories:
 ```bash
 # Works in any directory - no setup required!
 mkdir -p /tmp/depmap-workspace && cd /tmp/depmap-workspace
-./depmap-downloader update  # Creates database automatically
+./depdown update  # Creates database automatically
 ```
 
 #### Manual Recovery (If Needed)
@@ -296,16 +296,16 @@ ls -la depmap_cache.db
 curl -I https://depmap.org/portal/api
 
 # View detailed logs
-./target/release/depmap-downloader --verbose update
+./target/release/depdown --verbose update
 ```
 
 ### Performance Issues
 ```bash
 # Adjust worker count
-./target/release/depmap-downloader download --workers 2
+./target/release/depdown download --workers 2
 
 # Clear cache and rebuild
-./target/release/depmap-downloader clear --all
+./target/release/depdown clear --all
 ```
 
 ## 📚 Related Resources

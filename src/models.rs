@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Release {
@@ -69,6 +69,22 @@ pub struct CacheStats {
     pub last_updated: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProgressBreakdown {
+    pub category: String,
+    pub present_files: usize,
+    pub total_files: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DownloadProgressReport {
+    pub present_files: usize,
+    pub total_files: usize,
+    pub db_marked_downloaded_files: usize,
+    pub by_data_type: Vec<ProgressBreakdown>,
+    pub by_release: Vec<ProgressBreakdown>,
+}
+
 // API Response structures
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatasetApiResponse {
@@ -79,7 +95,7 @@ pub struct DatasetApiResponse {
 }
 
 // For CSV parsing of downloads.csv
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct DownloadCsvRow {
     pub release: String,
     pub release_date: String,
@@ -104,7 +120,7 @@ pub struct GeneDependencyCsvRow {
     #[serde(rename = "Strongly Selective")]
     pub strongly_selective: String, // "True"/"False" strings
     #[serde(rename = "Common Essential")]
-    pub common_essential: String,   // "True"/"False" strings
+    pub common_essential: String, // "True"/"False" strings
 }
 
 impl From<GeneDependencyCsvRow> for GeneDependency {

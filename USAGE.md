@@ -40,13 +40,13 @@ cargo build
 
 ```bash
 # 1. 更新缓存
-./target/release/depmap-downloader update
+./target/release/depdown update
 
 # 2. 查看可用的数据类型
-./target/release/depmap-downloader list --data-type CRISPR
+./target/release/depdown list --data-type CRISPR
 
 # 3. 下载 CRISPR 数据
-./target/release/depmap-downloader download --data-type CRISPR
+./target/release/depdown download --data-type CRISPR
 ```
 
 ## 详细命令说明
@@ -57,13 +57,13 @@ cargo build
 
 ```bash
 # 常规更新
-./target/release/depmap-downloader update
+./target/release/depdown update
 
 # 强制更新（忽略缓存时间）
-./target/release/depmap-downloader update --force
+./target/release/depdown update --force
 
 # 仅更新特定数据类型
-./target/release/depmap-downloader update --data-type CRISPR --data-type Expression
+./target/release/depdown update --data-type CRISPR --data-type Expression
 ```
 
 ### List 命令
@@ -72,16 +72,16 @@ cargo build
 
 ```bash
 # 列出所有发布版本
-./target/release/depmap-downloader list
+./target/release/depdown list
 
 # 列出特定数据类型的数据集
-./target/release/depmap-downloader list --data-type CRISPR
+./target/release/depdown list --data-type CRISPR
 
 # 显示详细信息（包含文件数量、大小等）
-./target/release/depmap-downloader list --detailed
+./target/release/depdown list --detailed
 
 # 列出特定发布版本的文件
-./target/release/depmap-downloader list --release "DepMap Public 25Q3"
+./target/release/depdown list --release "DepMap Public 25Q3"
 ```
 
 ### Download 命令
@@ -90,16 +90,16 @@ cargo build
 
 ```bash
 # 下载当前版本的所有核心文件
-./target/release/depmap-downloader download
+./target/release/depdown download
 
 # 下载特定的数据集（所有相关文件）
-./target/release/depmap-downloader download --dataset Chronos_Combined
+./target/release/depdown download --dataset Chronos_Combined
 
 # 下载单个特定文件
-./target/release/depmap-downloader download --file "CRISPRGeneEffect.csv"
+./target/release/depdown download --file "CRISPRGeneEffect.csv"
 
 # 自定义设置
-./target/release/depmap-downloader download \
+./target/release/depdown download \
   --output ./my_depmap_data \
   --workers 8 \
   --skip-existing \
@@ -112,16 +112,16 @@ cargo build
 
 ```bash
 # 搜索细胞系（支持模糊匹配）
-./target/release/depmap-downloader search "A549" --cell-line
+./target/release/depdown search "A549" --cell-line
 
 # 搜索数据集
-./target/release/depmap-downloader search "CRISPR" --dataset
+./target/release/depdown search "CRISPR" --dataset
 
 # 搜索所有内容（默认行为）
-./target/release/depmap-downloader search "gene dependency"
+./target/release/depdown search "gene dependency"
 
 # 限制搜索结果数量
-./target/release/depmap-downloader search "cancer" --limit 10
+./target/release/depdown search "cancer" --limit 10
 ```
 
 ### Stats 命令
@@ -130,10 +130,10 @@ cargo build
 
 ```bash
 # 基本统计
-./target/release/depmap-downloader stats
+./target/release/depdown stats
 
 # 详细统计（包含各类型数据量）
-./target/release/depmap-downloader stats --detailed
+./target/release/depdown stats --detailed
 ```
 
 ### Clear 命令
@@ -142,10 +142,10 @@ cargo build
 
 ```bash
 # 清除所有缓存
-./target/release/depmap-downloader clear --all
+./target/release/depdown clear --all
 
 # 清除特定数据类型的缓存
-./target/release/depmap-downloader clear --data-type CRISPR
+./target/release/depdown clear --data-type CRISPR
 ```
 
 ## 实际使用场景
@@ -154,61 +154,61 @@ cargo build
 
 ```bash
 # 1. 更新缓存
-./target/release/depmap-downloader update
+./target/release/depdown update
 
 # 2. 查看 CRISPR 数据集
-./target/release/depmap-downloader list --data-type CRISPR
+./target/release/depdown list --data-type CRISPR
 
 # 3. 下载 CRISPR 数据
-./target/release/depmap-downloader download --dataset Chronos_Combined
+./target/release/depdown download --dataset Chronos_Combined
 
 # 4. 搜索特定基因
-./target/release/depmap-downloader search "TP53" --dataset --limit 5
+./target/release/depdown search "TP53" --dataset --limit 5
 ```
 
 ### 场景 2：批量下载特定细胞系相关数据
 
 ```bash
 # 1. 搜索细胞系
-./target/release/depmap-downloader search "MCF7" --cell-line
+./target/release/depdown search "MCF7" --cell-line
 
 # 2. 查看数据集
-./target/release/depmap-downloader list --detailed
+./target/release/depdown list --detailed
 
 # 3. 下载基因表达数据（通常包含细胞系信息）
-./target/release/depmap-downloader download --dataset expression
+./target/release/depdown download --dataset expression
 
 # 4. 下载突变数据
-./target/release/depmap-downloader download --dataset mutations_damaging
+./target/release/depdown download --dataset mutations_damaging
 ```
 
 ### 场景 3：获取最新发布版本的所有数据
 
 ```bash
 # 1. 更新到最新版本
-./target/release/depmap-downloader update --force
+./target/release/depdown update --force
 
 # 2. 查看最新版本
-./target/release/depmap-downloader list
+./target/release/depdown list
 
 # 3. 下载核心数据文件（不包含所有大文件）
-./target/release/depmap-downloader download
+./target/release/depdown download
 
 # 4. 检查下载统计
-./target/release/depmap-downloader stats --detailed
+./target/release/depdown stats --detailed
 ```
 
 ### 场景 4：特定研究目的下载
 
 ```bash
 # 药物敏感性研究
-./target/release/depmap-downloader download --dataset GDSC2_AUC
+./target/release/depdown download --dataset GDSC2_AUC
 
 # 蛋白质表达数据
-./target/release/depmap-downloader download --dataset "Harmonized MS CCLE Gygi"
+./target/release/depdown download --dataset "Harmonized MS CCLE Gygi"
 
 # 代谢组学数据
-./target/release/depmap-downloader download --dataset metabolomics
+./target/release/depdown download --dataset metabolomics
 ```
 
 ## 高级配置
@@ -217,7 +217,7 @@ cargo build
 
 ```bash
 # 使用自定义数据库路径
-./target/release/depmap-downloader \
+./target/release/depdown \
   --database /path/to/my_cache.db \
   update
 ```
@@ -226,7 +226,7 @@ cargo build
 
 ```bash
 # 使用自定义 API（测试或开发环境）
-./target/release/depmap-downloader \
+./target/release/depdown \
   --api-url "https://test-api.depmap.org" \
   update
 ```
@@ -235,7 +235,7 @@ cargo build
 
 ```bash
 # 查看详细的操作日志
-./target/release/depmap-downloader --verbose update
+./target/release/depdown --verbose update
 ```
 
 ## 编程接口使用
@@ -341,13 +341,13 @@ async fn batch_download() -> Result<(), Box<dyn std::error::Error>> {
 
 ```bash
 # 高速网络（100+ Mbps）
-./target/release/depmap-downloader download --workers 8
+./target/release/depdown download --workers 8
 
 # 普通网络（10-50 Mbps）
-./target/release/depmap-downloader download --workers 4  # 默认值
+./target/release/depdown download --workers 4  # 默认值
 
 # 慢速网络（<10 Mbps）
-./target/release/depmap-downloader download --workers 2
+./target/release/depdown download --workers 2
 ```
 
 ### 2. 磁盘空间管理
@@ -359,7 +359,7 @@ async fn batch_download() -> Result<(), Box<dyn std::error::Error>> {
 df -h
 
 # 仅下载必要文件
-./target/release/depmap-downloader download --dataset CRISPR
+./target/release/depdown download --dataset CRISPR
 ```
 
 ### 3. 网络稳定性
@@ -368,13 +368,13 @@ df -h
 
 ```bash
 # 使用跳过已存在文件功能
-./target/release/depmap-downloader download --skip-existing
+./target/release/depdown download --skip-existing
 
 # 启用校验和验证
-./target/release/depmap-downloader download --verify-checksum
+./target/release/depdown download --verify-checksum
 
 # 降低并发数以减少网络压力
-./target/release/depmap-downloader download --workers 1
+./target/release/depdown download --workers 1
 ```
 
 ## 常见问题解决
@@ -383,11 +383,11 @@ df -h
 
 ```bash
 # 数据库锁定或损坏
-./target/release/depmap-downloader clear --all
+./target/release/depdown clear --all
 
 # 重新初始化
 rm depmap_cache.db
-./target/release/depmap-downloader update
+./target/release/depdown update
 ```
 
 ### 网络连接问题
@@ -398,7 +398,7 @@ curl -I https://depmap.org/portal/api
 
 # 使用代理（如果需要）
 export https_proxy=http://proxy.company.com:8080
-./target/release/depmap-downloader update
+./target/release/depdown update
 ```
 
 ### 权限问题
@@ -427,15 +427,15 @@ chmod 755 downloads/
 ```bash
 # 按数据类型组织存储
 mkdir -p depmap_data/{crispr,expression,mutations}
-./target/release/depmap-downloader download --output depmap_data/crispr --data-type CRISPR
+./target/release/depdown download --output depmap_data/crispr --data-type CRISPR
 ```
 
 ### 3. 版本控制
 
 ```bash
 # 记录下载的版本信息
-./target/release/depmap-downloader list > downloads_log.txt
-./target/release/depmap-downloader stats >> downloads_log.txt
+./target/release/depdown list > downloads_log.txt
+./target/release/depdown stats >> downloads_log.txt
 ```
 
 这个使用指南涵盖了 DepMap Downloader Rust 版本的所有主要功能和使用场景，帮助用户快速上手并高效使用工具进行癌症依赖性数据的研究和分析。
